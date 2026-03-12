@@ -1,0 +1,99 @@
+# ui_charts.py
+
+import ttkbootstrap as ttk
+from ttkbootstrap.constants import *
+
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+
+from excel_manager import read_logs
+from settings_manager import load_settings
+from charts_engine import build_charts
+
+
+class ChartsUI:
+
+    def __init__(self, parent):
+
+        self.parent = parent
+        self.settings = load_settings()
+
+        self.build_ui()
+        self.refresh_charts()
+
+
+# ============================================================
+# BUILD CHART PAGE
+# ============================================================
+
+    def build_ui(self):
+
+        container = ttk.Frame(self.parent, padding=20)
+        container.pack(fill="both", expand=True)
+
+        header = ttk.Frame(container)
+        header.pack(fill="x", pady=(0,10))
+
+        ttk.Label(
+            header,
+            text="Analytics Dashboard",
+            font=("Segoe UI",20,"bold")
+        ).pack(side="left")
+
+        ttk.Button(
+            header,
+            text="Refresh Charts",
+            bootstyle="primary",
+            command=self.refresh_charts
+        ).pack(side="right")
+
+
+        # ------------------------------------
+        # WEEKLY SUMMARY
+        # ------------------------------------
+
+        self.summary_label = ttk.Label(
+            container,
+            text="Loading analytics...",
+            font=("Segoe UI",11,"bold")
+        )
+
+        self.summary_label.pack(anchor="w", pady=(10,10))
+
+
+        # ------------------------------------
+        # CHART AREA
+        # ------------------------------------
+
+        self.chart_frame = ttk.Frame(container)
+        self.chart_frame.pack(fill="both", expand=True)
+
+
+# ============================================================
+# REFRESH CHARTS
+# ============================================================
+
+    def refresh_charts(self):
+
+        for widget in self.chart_frame.winfo_children():
+            widget.destroy()
+
+        self.settings = load_settings()
+
+        rows = read_logs(self.settings["excel_path"])
+
+        fig, summary = build_charts(
+            rows,
+            self.settings["weekly_target_hours"]
+        )
+
+        canvas = FigureCanvasTkAgg(fig, master=self.chart_frame)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill="both", expand=True)
+
+        self.summary_label.config(
+            text=(
+                f"Worked this week: {summary['hours']}h   |   "
+                f"Target: {self.settings['weekly_target_hours']}h   |   "
+                f"Completion: {summary['completion']}%"
+            )
+        )
