@@ -1,0 +1,93 @@
+# ui_logs.py
+
+import ttkbootstrap as ttk
+from ttkbootstrap.constants import *
+
+from excel_manager import read_today_logs
+from settings_manager import load_settings
+
+
+class LogsUI:
+    def __init__(self, parent):
+        self.parent = parent
+        self.settings = load_settings()
+        self.build_ui()
+        self.refresh_logs()
+
+    # ============================================================
+    # BUILD LOGS PAGE
+    # ============================================================
+
+    def build_ui(self):
+        container = ttk.Frame(self.parent, padding=20)
+        container.pack(fill="both", expand=True)
+
+        header = ttk.Frame(container)
+        header.pack(fill="x", pady=(0, 12))
+        header.columnconfigure(1, weight=1)
+
+        ttk.Label(
+            header,
+            text="Today's Log",
+            font=("Segoe UI", 20, "bold")
+        ).grid(row=0, column=0, sticky="w")
+
+        ttk.Button(
+            header,
+            text="Refresh",
+            bootstyle=PRIMARY,
+            command=self.refresh_logs
+        ).grid(row=0, column=2, sticky="e")
+
+        table_frame = ttk.Labelframe(container, text="Logged Entries", padding=12)
+        table_frame.pack(fill="both", expand=True)
+        table_frame.columnconfigure(0, weight=1)
+        table_frame.rowconfigure(0, weight=1)
+
+        columns = ("date", "start", "end", "minutes", "duration", "activity")
+
+        self.tree = ttk.Treeview(
+            table_frame,
+            columns=columns,
+            show="headings",
+            height=18
+        )
+
+        self.tree.heading("date", text="Date")
+        self.tree.heading("start", text="Start")
+        self.tree.heading("end", text="End")
+        self.tree.heading("minutes", text="Minutes")
+        self.tree.heading("duration", text="Duration")
+        self.tree.heading("activity", text="Activity")
+
+        self.tree.column("date", width=110, anchor="center")
+        self.tree.column("start", width=90, anchor="center")
+        self.tree.column("end", width=90, anchor="center")
+        self.tree.column("minutes", width=90, anchor="center")
+        self.tree.column("duration", width=110, anchor="center")
+        self.tree.column("activity", width=260, anchor="w")
+
+        scrollbar = ttk.Scrollbar(table_frame, orient=VERTICAL, command=self.tree.yview)
+        self.tree.configure(yscrollcommand=scrollbar.set)
+
+        self.tree.grid(row=0, column=0, sticky="nsew")
+        scrollbar.grid(row=0, column=1, sticky="ns")
+
+    # ============================================================
+    # REFRESH LOGS
+    # ============================================================
+
+    def refresh_logs(self):
+        self.settings = load_settings()
+
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+
+        rows = read_today_logs(self.settings["excel_path"])
+
+        for row in rows:
+            self.tree.insert(
+                "",
+                "end",
+                values=(row[0], row[1], row[2], row[3], row[4], row[5])
+            )
