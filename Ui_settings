@@ -1,0 +1,234 @@
+# ui_settings.py
+
+import tkinter as tk
+from tkinter import filedialog
+
+import ttkbootstrap as ttk
+from ttkbootstrap.constants import *
+
+from settings_manager import (
+    load_settings,
+    save_settings,
+    add_activity,
+    remove_activity,
+    get_available_themes
+)
+
+
+class SettingsUI:
+
+    def __init__(self, parent):
+
+        self.parent = parent
+        self.settings = load_settings()
+
+        self.excel_var = tk.StringVar(value=self.settings["excel_path"])
+        self.target_var = tk.StringVar(value=str(self.settings["weekly_target_hours"]))
+        self.new_activity_var = tk.StringVar()
+        self.theme_var = tk.StringVar(value=self.settings["theme"])
+
+        self.build_ui()
+
+
+# ============================================================
+# BUILD SETTINGS UI
+# ============================================================
+
+    def build_ui(self):
+
+        container = ttk.Frame(self.parent, padding=20)
+        container.pack(fill="both", expand=True)
+
+        ttk.Label(
+            container,
+            text="Settings",
+            font=("Segoe UI",20,"bold")
+        ).pack(anchor="w", pady=(0,15))
+
+
+        # ---------------------------------------
+        # EXCEL FILE
+        # ---------------------------------------
+
+        excel_frame = ttk.Labelframe(
+            container,
+            text="Excel File",
+            padding=10
+        )
+
+        excel_frame.pack(fill="x", pady=(0,15))
+
+        ttk.Entry(
+            excel_frame,
+            textvariable=self.excel_var
+        ).pack(fill="x")
+
+        ttk.Button(
+            excel_frame,
+            text="Browse",
+            bootstyle=PRIMARY,
+            command=self.browse_excel
+        ).pack(pady=5)
+
+
+        # ---------------------------------------
+        # WEEKLY TARGET
+        # ---------------------------------------
+
+        target_frame = ttk.Labelframe(
+            container,
+            text="Weekly Target Hours",
+            padding=10
+        )
+
+        target_frame.pack(fill="x", pady=(0,15))
+
+        ttk.Entry(
+            target_frame,
+            textvariable=self.target_var
+        ).pack(fill="x")
+
+
+        # ---------------------------------------
+        # THEME
+        # ---------------------------------------
+
+        theme_frame = ttk.Labelframe(
+            container,
+            text="Theme",
+            padding=10
+        )
+
+        theme_frame.pack(fill="x", pady=(0,15))
+
+        self.theme_combo = ttk.Combobox(
+            theme_frame,
+            textvariable=self.theme_var,
+            values=get_available_themes(),
+            state="readonly"
+        )
+
+        self.theme_combo.pack(fill="x")
+
+
+        # ---------------------------------------
+        # ACTIVITIES
+        # ---------------------------------------
+
+        activity_frame = ttk.Labelframe(
+            container,
+            text="Activities",
+            padding=10
+        )
+
+        activity_frame.pack(fill="both", expand=True)
+
+        input_row = ttk.Frame(activity_frame)
+        input_row.pack(fill="x", pady=(0,10))
+
+        ttk.Entry(
+            input_row,
+            textvariable=self.new_activity_var
+        ).pack(side="left", fill="x", expand=True)
+
+        ttk.Button(
+            input_row,
+            text="Add",
+            bootstyle=SUCCESS,
+            command=self.add_activity_click
+        ).pack(side="left", padx=5)
+
+        self.activity_list = tk.Listbox(activity_frame, height=10)
+        self.activity_list.pack(fill="both", expand=True)
+
+        ttk.Button(
+            activity_frame,
+            text="Remove Selected",
+            bootstyle=DANGER,
+            command=self.remove_activity_click
+        ).pack(pady=5)
+
+        self.refresh_activity_list()
+
+
+        # ---------------------------------------
+        # SAVE BUTTON
+        # ---------------------------------------
+
+        ttk.Button(
+            container,
+            text="Save Settings",
+            bootstyle=SUCCESS,
+            command=self.save_click
+        ).pack(pady=10)
+
+
+# ============================================================
+# FILE BROWSER
+# ============================================================
+
+    def browse_excel(self):
+
+        path = filedialog.askopenfilename(
+            filetypes=[("Excel files","*.xlsx")]
+        )
+
+        if path:
+            self.excel_var.set(path)
+
+
+# ============================================================
+# ACTIVITY MANAGEMENT
+# ============================================================
+
+    def refresh_activity_list(self):
+
+        self.activity_list.delete(0, tk.END)
+
+        for act in self.settings["activities"]:
+            self.activity_list.insert(tk.END, act)
+
+
+    def add_activity_click(self):
+
+        act = self.new_activity_var.get().strip()
+
+        if not act:
+            return
+
+        self.settings = add_activity(self.settings, act)
+
+        self.new_activity_var.set("")
+        self.refresh_activity_list()
+
+
+    def remove_activity_click(self):
+
+        sel = self.activity_list.curselection()
+
+        if not sel:
+            return
+
+        act = self.activity_list.get(sel[0])
+
+        self.settings = remove_activity(self.settings, act)
+
+        self.refresh_activity_list()
+
+
+# ============================================================
+# SAVE SETTINGS
+# ============================================================
+
+    def save_click(self):
+
+        try:
+            weekly_target = float(self.target_var.get())
+        except:
+            weekly_target = 40
+
+        self.settings["excel_path"] = self.excel_var.get()
+        self.settings["weekly_target_hours"] = weekly_target
+        self.settings["theme"] = self.theme_var.get()
+
+        save_settings(self.settings)
