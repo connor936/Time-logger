@@ -1,0 +1,313 @@
+import tkinter as tk
+from tkinter import ttk, messagebox, filedialog
+import json
+import os
+from datetime import datetime
+from openpyxl import Workbook, load_workbook
+
+# ======================================================
+# CONFIG
+# ======================================================
+
+APP_TITLE = "Enterprise Time Tracker"
+APP_SIZE = "1100x700"
+
+SETTINGS_FILE = "time_tracker_settings.json"
+DEFAULT_EXCEL = "master_time_log.xlsx"
+
+DEFAULT_ACTIVITIES = [
+    "Change Request",
+    "Incident",
+    "Meeting",
+    "Development",
+    "Admin",
+    "Break"
+]
+
+
+# ======================================================
+# SETTINGS
+# ======================================================
+
+def load_settings():
+
+    if not os.path.exists(SETTINGS_FILE):
+
+        settings = {
+            "excel_path": DEFAULT_EXCEL,
+            "activities": DEFAULT_ACTIVITIES
+        }
+
+        save_settings(settings)
+        return settings
+
+    with open(SETTINGS_FILE, "r") as f:
+        return json.load(f)
+
+
+def save_settings(settings):
+
+    with open(SETTINGS_FILE, "w") as f:
+        json.dump(settings, f, indent=4)
+
+
+# ======================================================
+# EXCEL
+# ======================================================
+
+def ensure_excel(path):
+
+    if not os.path.exists(path):
+
+        wb = Workbook()
+        ws = wb.active
+
+        ws.append([
+            "Date",
+            "Start",
+            "End",
+            "Duration",
+            "Activity"
+        ])
+
+        wb.save(path)
+
+
+def log_to_excel(path, start, end, activity):
+
+    ensure_excel(path)
+
+    duration = end - start
+
+    wb = load_workbook(path)
+    ws = wb.active
+
+    ws.append([
+        start.strftime("%Y-%m-%d"),
+        start.strftime("%H:%M:%S"),
+        end.strftime("%H:%M:%S"),
+        str(duration),
+        activity
+    ])
+
+    wb.save(path)
+
+
+# ======================================================
+# APP
+# ======================================================
+
+class TimeTracker(tk.Tk):
+
+    def __init__(self):
+
+        super().__init__()
+
+        self.title(APP_TITLE)
+        self.geometry(APP_SIZE)
+
+        self.settings = load_settings()
+
+        self.current_activity = None
+        self.start_time = None
+
+        self.build_ui()
+        self.update_timer()
+
+    # ==================================================
+    # UI
+    # ==================================================
+
+    def build_ui(self):
+
+        header = ttk.Label(self, text="Enterprise Time Tracker", font=("Segoe UI", 20))
+        header.pack(pady=10)
+
+        main_frame = ttk.Frame(self)
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+
+        left = ttk.Frame(main_frame)
+        left.pack(side="left", fill="both", expand=True)
+
+        right = ttk.Frame(main_frame)
+        right.pack(side="right", fill="y", padx=20)
+
+        # Activity selector
+
+        ttk.Label(left, text="Activity").pack(anchor="w")
+
+        self.activity_var = tk.StringVar()
+
+        self.dropdown = ttk.Combobox(
+            left,
+            textvariable=self.activity_var,
+            values=self.settings["activities"],
+            state="readonly",
+            width=40
+        )
+
+        self.dropdown.pack(pady=5)
+
+        if self.settings["activities"]:
+            self.dropdown.current(0)
+
+        # Buttons
+
+        button_frame = ttk.Frame(left)
+        button_frame.pack(pady=10)
+
+        ttk.Button(button_frame, text="Start", command=self.start_task).pack(side="left", padx=5)
+        ttk.Button(button_frame, text="Stop", command=self.stop_task).pack(side="left", padx=5)
+        ttk.Button(button_frame, text="Meeting", command=lambda: self.quick_start("Meeting")).pack(side="left", padx=5)
+
+        # Current status
+
+        status_frame = ttk.LabelFrame(left, text="Current Activity")
+        status_frame.pack(fill="x", pady=20)
+
+        self.current_label = ttk.Label(status_frame, text="None", font=("Segoe UI", 14))
+        self.current_label.pack(pady=5)
+
+        self.timer_label = ttk.Label(status_frame, text="00:00:00", font=("Segoe UI", 16))
+        self.timer_label.pack()
+
+        # Summary
+
+        summary_frame = ttk.LabelFrame(right, text="Today's Summary")
+        summary_frame.pack(fill="both", expand=True)
+
+        self.summary_text = tk.Text(summary_frame, width=30, height=20)
+        self.summary_text.pack()
+
+        # Settings button
+
+        ttk.Button(self, text="Settings", command=self.open_settings).pack(pady=10)
+
+    # ==================================================
+    # TASK LOGIC
+    # ==================================================
+
+    def start_task(self):
+
+        activity = self.activity_var.get()
+
+        if not activity:
+            return
+
+        now = datetime.now()
+
+        if self.current_activity:
+
+            self.stop_task()
+
+        self.current_activity = activity
+        self.start_time = now
+
+        self.current_label.config(text=activity)
+
+    def quick_start(self, activity):
+
+        self.activity_var.set(activity)
+        self.start_task()
+
+    def stop_task(self):
+
+        if not self.current_activity:
+            return
+
+        end_time = datetime.now()
+
+        log_to_excel(
+            self.settings["excel_path"],
+            self.start_time,
+            end_time,
+            self.current_activity
+        )
+
+        self.current_activity = None
+        self.start_time = None
+
+        self.current_label.config(text="None")
+        self.timer_label.config(text="00:00:00")
+
+    # ==================================================
+    # TIMER
+    # ==================================================
+
+    def update_timer(self):
+
+        if self.start_time:
+
+            elapsed = datetime.now() - self.start_time
+
+            seconds = int(elapsed.total_seconds())
+
+            h = seconds // 3600
+            m = (seconds % 3600) // 60
+            s = seconds % 60
+
+            self.timer_label.config(text=f"{h:02}:{m:02}:{s:02}")
+
+        self.after(1000, self.update_timer)
+
+    # ==================================================
+    # SETTINGS
+    # ==================================================
+
+    def open_settings(self):
+
+        win = tk.Toplevel(self)
+        win.title("Settings")
+        win.geometry("500x400")
+
+        ttk.Label(win, text="Activities").pack(pady=10)
+
+        listbox = tk.Listbox(win)
+        listbox.pack(fill="both", expand=True)
+
+        for a in self.settings["activities"]:
+            listbox.insert("end", a)
+
+        entry = ttk.Entry(win)
+        entry.pack(pady=5)
+
+        def add():
+
+            val = entry.get()
+
+            if val:
+                listbox.insert("end", val)
+
+        def delete():
+
+            sel = listbox.curselection()
+
+            if sel:
+                listbox.delete(sel)
+
+        def save():
+
+            acts = list(listbox.get(0, "end"))
+
+            self.settings["activities"] = acts
+            save_settings(self.settings)
+
+            self.dropdown["values"] = acts
+
+            win.destroy()
+
+        ttk.Button(win, text="Add", command=add).pack()
+        ttk.Button(win, text="Delete", command=delete).pack()
+        ttk.Button(win, text="Save", command=save).pack(pady=10)
+
+
+# ======================================================
+# RUN
+# ======================================================
+
+if __name__ == "__main__":
+
+    ensure_excel(DEFAULT_EXCEL)
+
+    app = TimeTracker()
+    app.mainloop()
