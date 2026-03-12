@@ -1,0 +1,143 @@
+# settings_manager.py
+import json
+import os
+from typing import Any, Dict
+
+
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+SETTINGS_FILE = os.path.join(BASE_DIR, "settings.json")
+
+DEFAULT_SETTINGS: Dict[str, Any] = {
+    "excel_path": os.path.join(BASE_DIR, "master_time_log.xlsx"),
+    "activities": [
+        "Change Request",
+        "Incident",
+        "Meeting",
+        "Development",
+        "Admin",
+        "Break",
+    ],
+    "weekly_target_hours": 40.0,
+    "theme": "flatly",
+}
+
+
+def _merge_defaults(settings: Dict[str, Any]) -> Dict[str, Any]:
+    merged = DEFAULT_SETTINGS.copy()
+    merged.update(settings or {})
+
+    if not isinstance(merged.get("activities"), list) or not merged["activities"]:
+        merged["activities"] = DEFAULT_SETTINGS["activities"][:]
+
+    cleaned_activities = []
+    for item in merged["activities"]:
+        item_str = str(item).strip()
+        if item_str and item_str not in cleaned_activities:
+            cleaned_activities.append(item_str)
+
+    if not cleaned_activities:
+        cleaned_activities = DEFAULT_SETTINGS["activities"][:]
+
+    merged["activities"] = cleaned_activities
+
+    try:
+        merged["weekly_target_hours"] = float(merged.get("weekly_target_hours", 40.0))
+    except (TypeError, ValueError):
+        merged["weekly_target_hours"] = 40.0
+
+    if merged["weekly_target_hours"] <= 0:
+        merged["weekly_target_hours"] = 40.0
+
+    merged["theme"] = str(merged.get("theme", "flatly")).strip() or "flatly"
+    merged["excel_path"] = str(
+        merged.get("excel_path", DEFAULT_SETTINGS["excel_path"])
+    ).strip() or DEFAULT_SETTINGS["excel_path"]
+
+    return merged
+
+
+def create_default_settings() -> Dict[str, Any]:
+    settings = DEFAULT_SETTINGS.copy()
+    save_settings(settings)
+    return settings
+
+
+def load_settings() -> Dict[str, Any]:
+    if not os.path.exists(SETTINGS_FILE):
+        return create_default_settings()
+
+    try:
+        with open(SETTINGS_FILE, "r", encoding="utf-8") as file:
+            raw_settings = json.load(file)
+    except (json.JSONDecodeError, OSError):
+        return create_default_settings()
+
+    merged_settings = _merge_defaults(raw_settings)
+    save_settings(merged_settings)
+    return merged_settings
+
+
+def save_settings(settings: Dict[str, Any]) -> None:
+    merged_settings = _merge_defaults(settings)
+
+    with open(SETTINGS_FILE, "w", encoding="utf-8") as file:
+        json.dump(merged_settings, file, indent=4)
+
+
+def get_available_themes() -> list[str]:
+    return [
+        "flatly",
+        "cosmo",
+        "litera",
+        "minty",
+        "pulse",
+        "sandstone",
+        "darkly",
+        "superhero",
+        "cyborg",
+    ]
+
+
+def add_activity(settings: Dict[str, Any], activity_name: str) -> Dict[str, Any]:
+    activity_name = str(activity_name).strip()
+    if not activity_name:
+        return settings
+
+    if activity_name not in settings["activities"]:
+        settings["activities"].append(activity_name)
+
+    save_settings(settings)
+    return load_settings()
+
+
+def remove_activity(settings: Dict[str, Any], activity_name: str) -> Dict[str, Any]:
+    activity_name = str(activity_name).strip()
+    settings["activities"] = [
+        activity for activity in settings["activities"] if activity != activity_name
+    ]
+
+    if not settings["activities"]:
+        settings["activities"] = DEFAULT_SETTINGS["activities"][:]
+
+    save_settings(settings)
+    return load_settings()
+
+
+def move_activity_up(settings: Dict[str, Any], index: int) -> Dict[str, Any]:
+    activities = settings["activities"]
+
+    if 0 < index < len(activities):
+        activities[index - 1], activities[index] = activities[index], activities[index - 1]
+
+    save_settings(settings)
+    return load_settings()
+
+
+def move_activity_down(settings: Dict[str, Any], index: int) -> Dict[str, Any]:
+    activities = settings["activities"]
+
+    if 0 <= index < len(activities) - 1:
+        activities[index + 1], activities[index] = activities[index], activities[index + 1]
+
+    save_settings(settings)
+    return load_settings()
