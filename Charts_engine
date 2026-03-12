@@ -1,0 +1,189 @@
+# charts_engine.py
+
+from collections import defaultdict
+from datetime import datetime, timedelta
+
+from matplotlib.figure import Figure
+
+
+# ============================================================
+# TIME CONVERSION
+# ============================================================
+
+def duration_to_seconds(duration):
+
+    try:
+        h, m, s = duration.split(":")
+        return int(h) * 3600 + int(m) * 60 + int(s)
+
+    except:
+        return 0
+
+
+# ============================================================
+# PROCESS LOG DATA
+# ============================================================
+
+def process_logs(rows):
+
+    today = datetime.now().strftime("%d/%m/%Y")
+
+    week_start = datetime.now().date() - timedelta(days=datetime.now().weekday())
+    week_end = week_start + timedelta(days=6)
+
+    today_totals = defaultdict(int)
+    week_activity_totals = defaultdict(int)
+    daily_totals = defaultdict(int)
+
+    for row in rows:
+
+        if not row or len(row) < 6:
+            continue
+
+        date_str = row[0]
+        duration = row[4]
+        activity = row[5]
+
+        seconds = duration_to_seconds(duration)
+
+        try:
+            row_date = datetime.strptime(date_str, "%d/%m/%Y").date()
+        except:
+            continue
+
+        if date_str == today:
+            today_totals[activity] += seconds
+
+        if week_start <= row_date <= week_end:
+
+            week_activity_totals[activity] += seconds
+
+            day_name = row_date.strftime("%a")
+            daily_totals[day_name] += seconds
+
+    ordered_days = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]
+
+    daily_hours = [
+        round(daily_totals.get(day, 0) / 3600, 2)
+        for day in ordered_days
+    ]
+
+    return today_totals, week_activity_totals, ordered_days, daily_hours
+
+
+# ============================================================
+# WEEKLY PRODUCTIVITY
+# ============================================================
+
+def weekly_productivity(week_activity_totals, weekly_target):
+
+    total_seconds = sum(week_activity_totals.values())
+
+    hours = round(total_seconds / 3600, 2)
+
+    completion = 0
+
+    if weekly_target > 0:
+        completion = round((hours / weekly_target) * 100, 1)
+
+    remaining = max(weekly_target - hours, 0)
+
+    return hours, completion, remaining
+
+
+# ============================================================
+# BUILD CHART FIGURE
+# ============================================================
+
+def build_charts(rows, weekly_target):
+
+    today_totals, week_activity_totals, ordered_days, daily_hours = process_logs(rows)
+
+    fig = Figure(figsize=(12,7), dpi=100)
+
+    # --------------------------------
+    # Today Pie Chart
+    # --------------------------------
+
+    ax1 = fig.add_subplot(221)
+
+    labels = list(today_totals.keys())
+    values = [v / 3600 for v in today_totals.values()]
+
+    if values:
+
+        ax1.pie(values, labels=labels, autopct="%1.1f%%", startangle=90)
+        ax1.set_title("Today's Activity Breakdown")
+
+    else:
+
+        ax1.text(0.5,0.5,"No data today",ha="center")
+        ax1.set_title("Today's Activity Breakdown")
+        ax1.axis("off")
+
+
+    # --------------------------------
+    # Weekly Activity Bar Chart
+    # --------------------------------
+
+    ax2 = fig.add_subplot(222)
+
+    week_labels = list(week_activity_totals.keys())
+    week_values = [v / 3600 for v in week_activity_totals.values()]
+
+    if week_values:
+
+        ax2.bar(week_labels, week_values)
+        ax2.set_title("Weekly Activity Totals (Hours)")
+        ax2.set_ylabel("Hours")
+
+    else:
+
+        ax2.text(0.5,0.5,"No data this week",ha="center")
+        ax2.axis("off")
+
+
+    # --------------------------------
+    # Daily Productivity Line
+    # --------------------------------
+
+    ax3 = fig.add_subplot(223)
+
+    ax3.plot(ordered_days, daily_hours, marker="o")
+    ax3.set_title("Daily Productivity This Week")
+    ax3.set_ylabel("Hours")
+
+
+    # --------------------------------
+    # Weekly Target Pie
+    # --------------------------------
+
+    ax4 = fig.add_subplot(224)
+
+    hours, completion, remaining = weekly_productivity(
+        week_activity_totals,
+        weekly_target
+    )
+
+    values = [hours, remaining]
+    labels = ["Worked","Remaining"]
+
+    if hours > 0 or remaining > 0:
+
+        ax4.pie(values, labels=labels, autopct="%1.1f%%", startangle=90)
+        ax4.set_title("Weekly Target Progress")
+
+    else:
+
+        ax4.text(0.5,0.5,"No weekly data",ha="center")
+        ax4.axis("off")
+
+    fig.tight_layout()
+
+    summary = {
+        "hours": hours,
+        "completion": completion,
+        "remaining": remaining
+    }
+
+    return fig, summary
