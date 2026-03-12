@@ -1,0 +1,221 @@
+# ui_dashboard.py
+
+import tkinter as tk
+import ttkbootstrap as ttk
+from ttkbootstrap.constants import *
+
+from activity_tracker import ActivityTracker
+from excel_manager import append_log, read_today_logs
+from settings_manager import load_settings
+
+
+class DashboardUI:
+
+    def __init__(self, parent):
+
+        self.parent = parent
+
+        self.settings = load_settings()
+
+        self.tracker = ActivityTracker()
+
+        self.activity_var = tk.StringVar()
+        self.timer_var = tk.StringVar(value="00:00:00")
+
+        self.build_ui()
+
+        self.update_timer()
+
+
+# ============================================================
+# BUILD DASHBOARD
+# ============================================================
+
+    def build_ui(self):
+
+        container = ttk.Frame(self.parent, padding=20)
+        container.pack(fill="both", expand=True)
+
+        title = ttk.Label(
+            container,
+            text="Dashboard",
+            font=("Segoe UI", 20, "bold")
+        )
+
+        title.pack(anchor="w", pady=(0,20))
+
+
+        # -----------------------------------
+        # ACTIVITY SELECT
+        # -----------------------------------
+
+        ttk.Label(
+            container,
+            text="Activity",
+            font=("Segoe UI",11)
+        ).pack(anchor="w")
+
+        self.activity_combo = ttk.Combobox(
+            container,
+            textvariable=self.activity_var,
+            values=self.settings["activities"],
+            state="readonly"
+        )
+
+        self.activity_combo.pack(fill="x", pady=(5,15))
+
+        if self.settings["activities"]:
+            self.activity_combo.current(0)
+
+
+        # -----------------------------------
+        # BUTTONS
+        # -----------------------------------
+
+        button_row = ttk.Frame(container)
+        button_row.pack(pady=10)
+
+        ttk.Button(
+            button_row,
+            text="Start / Switch",
+            bootstyle=SUCCESS,
+            command=self.start_activity
+        ).pack(side="left", padx=5)
+
+        ttk.Button(
+            button_row,
+            text="Stop",
+            bootstyle=DANGER,
+            command=self.stop_activity
+        ).pack(side="left", padx=5)
+
+
+        # -----------------------------------
+        # TIMER DISPLAY
+        # -----------------------------------
+
+        ttk.Label(
+            container,
+            text="Current Timer",
+            font=("Segoe UI",11)
+        ).pack(anchor="w", pady=(20,5))
+
+        ttk.Label(
+            container,
+            textvariable=self.timer_var,
+            font=("Consolas",28,"bold")
+        ).pack(anchor="w")
+
+
+        # -----------------------------------
+        # TODAY LOG
+        # -----------------------------------
+
+        ttk.Label(
+            container,
+            text="Today's Entries",
+            font=("Segoe UI",14,"bold")
+        ).pack(anchor="w", pady=(30,10))
+
+        columns = ("Start","End","Duration","Activity")
+
+        self.tree = ttk.Treeview(
+            container,
+            columns=columns,
+            show="headings",
+            height=8
+        )
+
+        for col in columns:
+
+            self.tree.heading(col,text=col)
+            self.tree.column(col,width=120)
+
+        self.tree.pack(fill="both", expand=True)
+
+        self.refresh_log_table()
+
+
+# ============================================================
+# START ACTIVITY
+# ============================================================
+
+    def start_activity(self):
+
+        activity = self.activity_var.get()
+
+        if not activity:
+            return
+
+        previous = self.tracker.start(activity)
+
+        if previous:
+
+            prev_activity, start_time, end_time = previous
+
+            append_log(
+                self.settings["excel_path"],
+                start_time,
+                end_time,
+                prev_activity
+            )
+
+            self.refresh_log_table()
+
+
+# ============================================================
+# STOP ACTIVITY
+# ============================================================
+
+    def stop_activity(self):
+
+        result = self.tracker.stop()
+
+        if not result:
+            return
+
+        activity, start_time, end_time = result
+
+        append_log(
+            self.settings["excel_path"],
+            start_time,
+            end_time,
+            activity
+        )
+
+        self.refresh_log_table()
+
+
+# ============================================================
+# TIMER LOOP
+# ============================================================
+
+    def update_timer(self):
+
+        seconds = self.tracker.get_elapsed_seconds()
+
+        self.timer_var.set(
+            self.tracker.seconds_to_hms(seconds)
+        )
+
+        self.parent.after(1000, self.update_timer)
+
+
+# ============================================================
+# REFRESH TABLE
+# ============================================================
+
+    def refresh_log_table(self):
+
+        for row in self.tree.get_children():
+            self.tree.delete(row)
+
+        rows = read_today_logs(self.settings["excel_path"])
+
+        for r in rows:
+
+            self.tree.insert(
+                "",
+                "end",
+                values=(r[1], r[2], r[4], r[5])
+            )
