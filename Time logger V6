@@ -1,0 +1,691 @@
+import json
+import os
+from collections import defaultdict
+from datetime import datetime, timedelta
+import tkinter as tk
+from tkinter import filedialog, messagebox
+
+import ttkbootstrap as ttk
+from ttkbootstrap.constants import *
+
+from openpyxl import Workbook, load_workbook
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+
+
+APP_TITLE = "Enterprise Time Tracker"
+
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+
+SETTINGS_FILE = os.path.join(BASE_DIR, "time_tracker_settings.json")
+
+DEFAULT_EXCEL_PATH = os.path.join(BASE_DIR, "master_time_log.xlsx")
+
+DEFAULT_SETTINGS = {
+    "excel_path": DEFAULT_EXCEL_PATH,
+    "activities": [
+        "Change Request",
+        "Incident",
+        "Meeting",
+        "Development",
+        "Environment Support",
+        "Admin",
+        "Break"
+    ]
+}
+
+
+# ============================================================
+# SETTINGS
+# ============================================================
+
+def load_settings():
+
+    if not os.path.exists(SETTINGS_FILE):
+
+        with open(SETTINGS_FILE, "w") as f:
+            json.dump(DEFAULT_SETTINGS, f, indent=4)
+
+        return DEFAULT_SETTINGS.copy()
+
+    with open(SETTINGS_FILE) as f:
+        return json.load(f)
+
+
+def save_settings(settings):
+
+    with open(SETTINGS_FILE, "w") as f:
+        json.dump(settings, f, indent=4)
+
+
+# ============================================================
+# EXCEL
+# ============================================================
+
+def ensure_workbook(path):
+
+    if not os.path.exists(path):
+
+        wb = Workbook()
+
+        ws = wb.active
+
+        ws.title = "Time Log"
+
+        ws.append([
+            "Date",
+            "Start",
+            "End",
+            "Minutes",
+            "Duration",
+            "Activity"
+        ])
+
+        wb.save(path)
+
+
+def append_log_to_excel(path, start_dt, end_dt, activity):
+
+    ensure_workbook(path)
+
+    seconds = int((end_dt - start_dt).total_seconds())
+
+    minutes = round(seconds / 60, 2)
+
+    h = seconds // 3600
+    m = (seconds % 3600) // 60
+    s = seconds % 60
+
+    duration = f"{h:02}:{m:02}:{s:02}"
+
+    wb = load_workbook(path)
+
+    ws = wb["Time Log"]
+
+    ws.append([
+        start_dt.strftime("%d/%m/%Y"),
+        start_dt.strftime("%H:%M:%S"),
+        end_dt.strftime("%H:%M:%S"),
+        minutes,
+        duration,
+        activity
+    ])
+
+    wb.save(path)
+
+
+def read_logs(path):
+
+    ensure_workbook(path)
+
+    wb = load_workbook(path, data_only=True)
+
+    ws = wb["Time Log"]
+
+    rows = []
+
+    for r in ws.iter_rows(min_row=2, values_only=True):
+
+        rows.append(r)
+
+    return rows
+
+
+# ============================================================
+# TIME HELPERS
+# ============================================================
+
+def seconds_to_hms(seconds):
+
+    h = seconds // 3600
+    m = (seconds % 3600) // 60
+    s = seconds % 60
+
+    return f"{h:02}:{m:02}:{s:02}"
+
+
+def duration_to_seconds(d):
+
+    try:
+
+        h, m, s = d.split(":")
+
+        return int(h) * 3600 + int(m) * 60 + int(s)
+
+    except:
+
+        return 0
+
+
+# ============================================================
+# APP
+# ============================================================
+
+class TimeTrackerApp(ttk.Window):
+
+    def __init__(self):
+
+        self.settings = load_settings()
+
+        ensure_workbook(self.settings["excel_path"])
+
+        super().__init__(themename="flatly")
+
+        self.title(APP_TITLE)
+
+        self.geometry("1400x850")
+
+        self.current_activity = None
+
+        self.current_start = None
+
+        self.activity_var = tk.StringVar()
+
+        self.duration_var = tk.StringVar(value="00:00:00")
+
+        self.excel_path_var = tk.StringVar(value=self.settings["excel_path"])
+
+        self.new_activity_var = tk.StringVar()
+
+        self.build_ui()
+
+        self.refresh_activity_sources()
+
+        self.update_timer()
+
+
+# ============================================================
+# UI
+# ============================================================
+
+    def build_ui(self):
+
+        container = ttk.Frame(self)
+
+        container.pack(fill="both", expand=True)
+
+        # Sidebar
+
+        sidebar = ttk.Frame(container, width=220)
+
+        sidebar.pack(side="left", fill="y")
+
+        ttk.Label(
+            sidebar,
+            text="Time Tracker",
+            font=("Segoe UI", 16, "bold")
+        ).pack(pady=20)
+
+        ttk.Button(
+            sidebar,
+            text="Dashboard",
+            command=lambda: self.show_page("dashboard")
+        ).pack(fill="x", padx=15, pady=5)
+
+        ttk.Button(
+            sidebar,
+            text="Today's Log",
+            command=lambda: self.show_page("logs")
+        ).pack(fill="x", padx=15, pady=5)
+
+        ttk.Button(
+            sidebar,
+            text="Charts",
+            command=lambda: self.show_page("charts")
+        ).pack(fill="x", padx=15, pady=5)
+
+        ttk.Button(
+            sidebar,
+            text="Settings",
+            command=lambda: self.show_page("settings")
+        ).pack(fill="x", padx=15, pady=5)
+
+        ttk.Separator(sidebar).pack(fill="x", pady=10)
+
+        ttk.Label(
+            sidebar,
+            textvariable=self.duration_var,
+            font=("Consolas", 16)
+        ).pack(pady=10)
+
+        # Main area
+
+        self.main = ttk.Frame(container)
+
+        self.main.pack(side="left", fill="both", expand=True)
+
+        self.pages = {}
+
+        for name in ["dashboard", "logs", "charts", "settings"]:
+
+            f = ttk.Frame(self.main)
+
+            f.pack(fill="both", expand=True)
+
+            self.pages[name] = f
+
+            f.pack_forget()
+
+        self.build_dashboard()
+
+        self.build_logs()
+
+        self.build_charts()
+
+        self.build_settings()
+
+        self.show_page("dashboard")
+
+
+# ============================================================
+# PAGE SWITCH
+# ============================================================
+
+    def show_page(self, name):
+
+        for p in self.pages.values():
+
+            p.pack_forget()
+
+        self.pages[name].pack(fill="both", expand=True)
+
+
+# ============================================================
+# DASHBOARD
+# ============================================================
+
+    def build_dashboard(self):
+
+        page = self.pages["dashboard"]
+
+        ttk.Label(
+            page,
+            text="Dashboard",
+            font=("Segoe UI", 20, "bold")
+        ).pack(anchor="w", pady=15)
+
+        ttk.Label(page, text="Activity").pack(anchor="w")
+
+        self.activity_combo = ttk.Combobox(
+            page,
+            textvariable=self.activity_var,
+            state="readonly"
+        )
+
+        self.activity_combo.pack(fill="x")
+
+        btn_row = ttk.Frame(page)
+
+        btn_row.pack(pady=10)
+
+        ttk.Button(
+            btn_row,
+            text="Start / Switch",
+            command=self.start_activity
+        ).pack(side="left")
+
+        ttk.Button(
+            btn_row,
+            text="Stop",
+            bootstyle="danger",
+            command=self.stop_activity
+        ).pack(side="left", padx=5)
+
+
+# ============================================================
+# LOG PAGE
+# ============================================================
+
+    def build_logs(self):
+
+        page = self.pages["logs"]
+
+        ttk.Label(
+            page,
+            text="Today's Log",
+            font=("Segoe UI", 20, "bold")
+        ).pack(anchor="w", pady=10)
+
+        cols = ("Start", "End", "Duration", "Activity")
+
+        self.log_tree = ttk.Treeview(
+            page,
+            columns=cols,
+            show="headings"
+        )
+
+        for c in cols:
+
+            self.log_tree.heading(c, text=c)
+
+        self.log_tree.pack(fill="both", expand=True)
+
+
+# ============================================================
+# CHARTS PAGE
+# ============================================================
+
+    def build_charts(self):
+
+        page = self.pages["charts"]
+
+        ttk.Label(
+            page,
+            text="Productivity Charts",
+            font=("Segoe UI", 20, "bold")
+        ).pack(anchor="w", pady=10)
+
+        self.chart_frame = ttk.Frame(page)
+
+        self.chart_frame.pack(fill="both", expand=True)
+
+        ttk.Button(
+            page,
+            text="Refresh Charts",
+            command=self.generate_charts
+        ).pack(pady=10)
+
+
+# ============================================================
+# SETTINGS
+# ============================================================
+
+    def build_settings(self):
+
+        page = self.pages["settings"]
+
+        ttk.Label(
+            page,
+            text="Settings",
+            font=("Segoe UI", 20, "bold")
+        ).pack(anchor="w", pady=10)
+
+        # Excel
+
+        ttk.Label(page, text="Excel File").pack(anchor="w")
+
+        ttk.Entry(
+            page,
+            textvariable=self.excel_path_var
+        ).pack(fill="x")
+
+        ttk.Button(
+            page,
+            text="Browse",
+            command=self.browse_excel
+        ).pack(pady=5)
+
+        # Activities
+
+        ttk.Label(
+            page,
+            text="Manage Activities",
+            font=("Segoe UI", 14, "bold")
+        ).pack(anchor="w", pady=10)
+
+        input_row = ttk.Frame(page)
+
+        input_row.pack(fill="x")
+
+        ttk.Entry(
+            input_row,
+            textvariable=self.new_activity_var
+        ).pack(side="left", fill="x", expand=True)
+
+        ttk.Button(
+            input_row,
+            text="Add",
+            command=self.add_activity
+        ).pack(side="left", padx=5)
+
+        self.activity_list = tk.Listbox(page, height=10)
+
+        self.activity_list.pack(fill="both", expand=True)
+
+        btn_row = ttk.Frame(page)
+
+        btn_row.pack(pady=5)
+
+        ttk.Button(
+            btn_row,
+            text="Remove",
+            command=self.remove_activity
+        ).pack(side="left", padx=5)
+
+        self.refresh_activity_list()
+
+
+# ============================================================
+# SETTINGS FUNCTIONS
+# ============================================================
+
+    def browse_excel(self):
+
+        path = filedialog.askopenfilename(filetypes=[("Excel", "*.xlsx")])
+
+        if path:
+            self.excel_path_var.set(path)
+
+
+    def refresh_activity_sources(self):
+
+        acts = self.settings["activities"]
+
+        self.activity_combo["values"] = acts
+
+        if acts:
+            self.activity_var.set(acts[0])
+
+
+    def refresh_activity_list(self):
+
+        self.activity_list.delete(0, tk.END)
+
+        for a in self.settings["activities"]:
+            self.activity_list.insert(tk.END, a)
+
+
+    def add_activity(self):
+
+        act = self.new_activity_var.get().strip()
+
+        if not act:
+            return
+
+        if act in self.settings["activities"]:
+            return
+
+        self.settings["activities"].append(act)
+
+        save_settings(self.settings)
+
+        self.refresh_activity_list()
+
+        self.refresh_activity_sources()
+
+        self.new_activity_var.set("")
+
+
+    def remove_activity(self):
+
+        sel = self.activity_list.curselection()
+
+        if not sel:
+            return
+
+        idx = sel[0]
+
+        del self.settings["activities"][idx]
+
+        save_settings(self.settings)
+
+        self.refresh_activity_list()
+
+        self.refresh_activity_sources()
+
+
+# ============================================================
+# ACTIVITY LOGIC
+# ============================================================
+
+    def start_activity(self):
+
+        act = self.activity_var.get()
+
+        if not act:
+            return
+
+        if self.current_activity:
+
+            self.stop_activity()
+
+        self.current_activity = act
+
+        self.current_start = datetime.now()
+
+
+    def stop_activity(self):
+
+        if not self.current_activity:
+            return
+
+        end = datetime.now()
+
+        append_log_to_excel(
+            self.settings["excel_path"],
+            self.current_start,
+            end,
+            self.current_activity
+        )
+
+        self.current_activity = None
+
+        self.current_start = None
+
+        self.refresh_logs()
+
+
+# ============================================================
+# TIMER
+# ============================================================
+
+    def update_timer(self):
+
+        if self.current_start:
+
+            seconds = int((datetime.now() - self.current_start).total_seconds())
+
+            self.duration_var.set(seconds_to_hms(seconds))
+
+        else:
+
+            self.duration_var.set("00:00:00")
+
+        self.after(1000, self.update_timer)
+
+
+# ============================================================
+# LOG REFRESH
+# ============================================================
+
+    def refresh_logs(self):
+
+        rows = read_logs(self.settings["excel_path"])
+
+        for r in self.log_tree.get_children():
+            self.log_tree.delete(r)
+
+        today = datetime.now().strftime("%d/%m/%Y")
+
+        for row in rows:
+
+            if row[0] == today:
+
+                self.log_tree.insert("", "end", values=row[1:5])
+
+
+# ============================================================
+# CHART GENERATION
+# ============================================================
+
+    def generate_charts(self):
+
+        rows = read_logs(self.settings["excel_path"])
+
+        today = datetime.now().strftime("%d/%m/%Y")
+
+        today_totals = defaultdict(int)
+
+        week_totals = defaultdict(int)
+
+        week_start = datetime.now() - timedelta(days=datetime.now().weekday())
+
+        for r in rows:
+
+            date_str = r[0]
+
+            duration = r[4]
+
+            act = r[5]
+
+            secs = duration_to_seconds(duration)
+
+            dt = datetime.strptime(date_str, "%d/%m/%Y")
+
+            if date_str == today:
+                today_totals[act] += secs
+
+            if dt >= week_start:
+                week_totals[act] += secs
+
+        for w in self.chart_frame.winfo_children():
+            w.destroy()
+
+        fig = plt.figure(figsize=(10,5))
+
+        ax = fig.add_subplot(121)
+
+        acts = list(today_totals.keys())
+
+        vals = [v/3600 for v in today_totals.values()]
+
+        ax.bar(acts, vals)
+
+        ax.set_title("Today's Activity (Hours)")
+
+        ax2 = fig.add_subplot(122)
+
+        acts = list(week_totals.keys())
+
+        hours = [v/3600 for v in week_totals.values()]
+
+        ax2.bar(acts, hours)
+
+        ax2.set_title("Week Activity (Hours)")
+
+        canvas = FigureCanvasTkAgg(fig, master=self.chart_frame)
+
+        canvas.draw()
+
+        canvas.get_tk_widget().pack(fill="both", expand=True)
+
+        total_week_hours = sum(hours)
+
+        pct = (total_week_hours / (8*5)) * 100
+
+        ttk.Label(
+            self.chart_frame,
+            text=f"Weekly productivity: {pct:.1f}% of 40h target",
+            font=("Segoe UI", 12, "bold")
+        ).pack(pady=10)
+
+
+# ============================================================
+# RUN
+# ============================================================
+
+if __name__ == "__main__":
+
+    app = TimeTrackerApp()
+
+    app.mainloop()
