@@ -1,0 +1,173 @@
+# excel_manager.py
+
+import os
+from datetime import datetime
+from collections import defaultdict
+from openpyxl import Workbook, load_workbook
+
+
+# ============================================================
+# EXCEL FILE MANAGEMENT
+# ============================================================
+
+def ensure_workbook(path: str):
+    """
+    Creates the Excel workbook if it doesn't already exist.
+    """
+
+    if os.path.exists(path):
+        return
+
+    wb = Workbook()
+    ws = wb.active
+
+    ws.title = "Time Log"
+
+    ws.append([
+        "Date",
+        "Start Time",
+        "End Time",
+        "Minutes",
+        "Duration",
+        "Activity"
+    ])
+
+    wb.save(path)
+
+
+# ============================================================
+# WRITE LOG ENTRY
+# ============================================================
+
+def append_log(path: str, start_dt: datetime, end_dt: datetime, activity: str):
+
+    ensure_workbook(path)
+
+    seconds = int((end_dt - start_dt).total_seconds())
+
+    minutes = round(seconds / 60, 2)
+
+    h = seconds // 3600
+    m = (seconds % 3600) // 60
+    s = seconds % 60
+
+    duration = f"{h:02}:{m:02}:{s:02}"
+
+    wb = load_workbook(path)
+    ws = wb["Time Log"]
+
+    ws.append([
+        start_dt.strftime("%d/%m/%Y"),
+        start_dt.strftime("%H:%M:%S"),
+        end_dt.strftime("%H:%M:%S"),
+        minutes,
+        duration,
+        activity
+    ])
+
+    wb.save(path)
+
+
+# ============================================================
+# READ ALL LOGS
+# ============================================================
+
+def read_logs(path: str):
+
+    ensure_workbook(path)
+
+    wb = load_workbook(path, data_only=True)
+    ws = wb["Time Log"]
+
+    logs = []
+
+    for row in ws.iter_rows(min_row=2, values_only=True):
+
+        if not row:
+            continue
+
+        logs.append(row)
+
+    return logs
+
+
+# ============================================================
+# READ TODAY'S LOGS
+# ============================================================
+
+def read_today_logs(path: str):
+
+    today = datetime.now().strftime("%d/%m/%Y")
+
+    rows = read_logs(path)
+
+    today_logs = []
+
+    for row in rows:
+
+        if row[0] == today:
+            today_logs.append(row)
+
+    return today_logs
+
+
+# ============================================================
+# ACTIVITY TOTALS
+# ============================================================
+
+def get_activity_totals(logs):
+
+    totals = defaultdict(int)
+
+    for row in logs:
+
+        duration = row[4]
+        activity = row[5]
+
+        try:
+            h, m, s = duration.split(":")
+            seconds = int(h) * 3600 + int(m) * 60 + int(s)
+        except:
+            seconds = 0
+
+        totals[activity] += seconds
+
+    return totals
+
+
+# ============================================================
+# WEEKLY TOTAL HOURS
+# ============================================================
+
+def get_weekly_hours(path: str):
+
+    rows = read_logs(path)
+
+    today = datetime.now()
+
+    week_start = today.date() - timedelta(days=today.weekday())
+
+    total_seconds = 0
+
+    for row in rows:
+
+        date_str = row[0]
+
+        try:
+            row_date = datetime.strptime(date_str, "%d/%m/%Y").date()
+        except:
+            continue
+
+        if row_date >= week_start:
+
+            duration = row[4]
+
+            try:
+                h, m, s = duration.split(":")
+                seconds = int(h) * 3600 + int(m) * 60 + int(s)
+            except:
+                seconds = 0
+
+            total_seconds += seconds
+
+    return round(total_seconds / 3600, 2)
