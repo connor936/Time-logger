@@ -1,0 +1,178 @@
+# main.py
+
+import ttkbootstrap as ttk
+from ttkbootstrap.constants import *
+
+from settings_manager import load_settings
+from ui_dashboard import DashboardUI
+from ui_logs import LogsUI
+from ui_charts import ChartsUI
+from ui_settings import SettingsUI
+
+
+APP_TITLE = "Enterprise Time Tracker"
+
+
+class TimeTrackerApp(ttk.Window):
+
+    def __init__(self):
+
+        self.settings = load_settings()
+
+        super().__init__(themename=self.settings.get("theme", "flatly"))
+
+        self.title(APP_TITLE)
+        self.geometry("1400x900")
+
+        self.build_ui()
+
+
+# ============================================================
+# BUILD MAIN UI
+# ============================================================
+
+    def build_ui(self):
+
+        container = ttk.Frame(self)
+        container.pack(fill="both", expand=True)
+
+        # ========================================================
+        # SIDEBAR
+        # ========================================================
+
+        sidebar = ttk.Frame(container, width=220)
+        sidebar.pack(side="left", fill="y")
+
+        ttk.Label(
+            sidebar,
+            text="Time Tracker",
+            font=("Segoe UI",18,"bold")
+        ).pack(pady=20)
+
+        ttk.Button(
+            sidebar,
+            text="📊 Dashboard",
+            bootstyle="primary-outline",
+            command=lambda: self.show_page("dashboard")
+        ).pack(fill="x", padx=15, pady=5)
+
+        ttk.Button(
+            sidebar,
+            text="🧾 Today's Log",
+            bootstyle="primary-outline",
+            command=lambda: self.show_page("logs")
+        ).pack(fill="x", padx=15, pady=5)
+
+        ttk.Button(
+            sidebar,
+            text="📈 Charts",
+            bootstyle="primary-outline",
+            command=lambda: self.show_page("charts")
+        ).pack(fill="x", padx=15, pady=5)
+
+        ttk.Button(
+            sidebar,
+            text="⚙ Settings",
+            bootstyle="primary-outline",
+            command=lambda: self.show_page("settings")
+        ).pack(fill="x", padx=15, pady=5)
+
+        ttk.Separator(sidebar).pack(fill="x", pady=15)
+
+        ttk.Button(
+            sidebar,
+            text="🌙 Toggle Dark / Light",
+            command=self.toggle_theme
+        ).pack(fill="x", padx=15, pady=10)
+
+        # ========================================================
+        # MAIN AREA
+        # ========================================================
+
+        self.main = ttk.Frame(container)
+        self.main.pack(side="left", fill="both", expand=True)
+
+        # Top bar
+
+        topbar = ttk.Frame(self.main, padding=10)
+        topbar.pack(fill="x")
+
+        ttk.Label(
+            topbar,
+            text="Enterprise Time Tracker",
+            font=("Segoe UI",18,"bold")
+        ).pack(side="left")
+
+        # ========================================================
+        # PAGE SYSTEM
+        # ========================================================
+
+        self.pages = {}
+
+        for name in ["dashboard","logs","charts","settings"]:
+
+            frame = ttk.Frame(self.main)
+            frame.pack(fill="both", expand=True)
+
+            self.pages[name] = frame
+            frame.pack_forget()
+
+        # ========================================================
+        # LOAD MODULES
+        # ========================================================
+
+        self.dashboard_ui = DashboardUI(self.pages["dashboard"])
+        self.logs_ui = LogsUI(self.pages["logs"])
+        self.charts_ui = ChartsUI(self.pages["charts"])
+        self.settings_ui = SettingsUI(self.pages["settings"])
+
+        self.show_page("dashboard")
+
+
+# ============================================================
+# PAGE SWITCHING
+# ============================================================
+
+    def show_page(self, name):
+
+        for page in self.pages.values():
+            page.pack_forget()
+
+        self.pages[name].pack(fill="both", expand=True)
+
+        if name == "logs":
+            self.logs_ui.refresh_logs()
+
+        if name == "charts":
+            self.charts_ui.refresh_charts()
+
+
+# ============================================================
+# THEME TOGGLE
+# ============================================================
+
+    def toggle_theme(self):
+
+        current = self.style.theme.name
+
+        dark_themes = ["darkly","cyborg","superhero"]
+
+        if current in dark_themes:
+
+            self.style.theme_use("flatly")
+            self.settings["theme"] = "flatly"
+
+        else:
+
+            self.style.theme_use("darkly")
+            self.settings["theme"] = "darkly"
+
+
+# ============================================================
+# RUN APPLICATION
+# ============================================================
+
+if __name__ == "__main__":
+
+    app = TimeTrackerApp()
+    app.mainloop()
