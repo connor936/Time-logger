@@ -1,0 +1,81 @@
+def build_ui(self):
+
+    container = ttk.Frame(self)
+    container.pack(fill=BOTH, expand=True)
+
+    container.columnconfigure(1, weight=1)
+    container.rowconfigure(0, weight=1)
+
+    # SIDEBAR
+    sidebar = ttk.Frame(container, width=220, padding=15)
+    sidebar.grid(row=0, column=0, sticky="ns")
+
+    ttk.Label(
+        sidebar,
+        text="Time Tracker",
+        font=("Segoe UI", 22, "bold")
+    ).pack(pady=25)
+
+    ttk.Button(
+        sidebar,
+        text="🏠 Dashboard",
+        command=lambda: self.show("dash"),
+        bootstyle="secondary-outline",
+        padding=12
+    ).pack(fill=X, pady=6)
+
+    ttk.Button(
+        sidebar,
+        text="🧾 Today's Log",
+        command=lambda: self.show("log"),
+        bootstyle="secondary-outline",
+        padding=12
+    ).pack(fill=X, pady=6)
+
+    ttk.Button(
+        sidebar,
+        text="📊 Charts",
+        command=lambda: self.show("charts"),
+        bootstyle="secondary-outline",
+        padding=12
+    ).pack(fill=X, pady=6)
+
+    ttk.Button(
+        sidebar,
+        text="⚙ Settings",
+        command=lambda: self.show("settings"),
+        bootstyle="secondary-outline",
+        padding=12
+    ).pack(fill=X, pady=6)
+
+    ttk.Separator(sidebar).pack(fill=X, pady=20)
+
+    ttk.Button(
+        sidebar,
+        text="Toggle Dark / Light",
+        command=self.toggle_theme,
+        bootstyle="secondary",
+        padding=12
+    ).pack(fill=X)
+
+    # MAIN CONTENT
+    self.main = ttk.Frame(container)
+    self.main.grid(row=0, column=1, sticky="nsew")
+
+    self.main.columnconfigure(0, weight=1)
+    self.main.rowconfigure(0, weight=1)
+
+    self.pages = {}
+
+    for name in ["dash", "log", "charts", "settings"]:
+
+        frame = ScrollFrame(self.main)
+        frame.grid(row=0, column=0, sticky="nsew")
+
+        self.pages[name] = frame
+        frame.grid_remove()
+
+    self.build_dashboard()
+    self.build_log()
+
+    self.show("dash")
