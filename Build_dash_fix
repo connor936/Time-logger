@@ -1,0 +1,97 @@
+def build_dashboard(self):
+
+    p = self.pages["dash"].content
+
+    wrapper = ttk.Frame(p)
+    wrapper.pack(expand=True)
+
+    ttk.Label(
+        wrapper,
+        text="Dashboard",
+        font=("Segoe UI", 28, "bold")
+    ).pack(pady=20)
+
+    # DASHBOARD CARDS
+    card_row = ttk.Frame(wrapper)
+    card_row.pack(pady=10)
+
+    self.total_var = tk.StringVar(value="0 min")
+    self.entries_var = tk.StringVar(value="0")
+    self.activity_now = tk.StringVar(value="None")
+
+    for label, var in [
+        ("Total Today", self.total_var),
+        ("Entries", self.entries_var),
+        ("Current Activity", self.activity_now)
+    ]:
+
+        card = ttk.Labelframe(card_row, text=label, padding=15)
+        card.pack(side=LEFT, padx=12)
+
+        ttk.Label(
+            card,
+            textvariable=var,
+            font=("Segoe UI", 16, "bold")
+        ).pack()
+
+    ttk.Separator(wrapper).pack(fill=X, pady=20)
+
+    # ACTIVITY CONTROLS
+    activity_row = ttk.Frame(wrapper)
+    activity_row.pack(pady=10)
+
+    self.activity_var = tk.StringVar()
+
+    self.activity_box = ttk.Combobox(
+        activity_row,
+        textvariable=self.activity_var,
+        values=self.settings["activities"],
+        width=35
+    )
+
+    self.activity_box.pack(side=LEFT, padx=10)
+
+    ttk.Button(
+        activity_row,
+        text="Start",
+        bootstyle="success",
+        command=self.start
+    ).pack(side=LEFT, padx=5)
+
+    ttk.Button(
+        activity_row,
+        text="Stop",
+        bootstyle="danger",
+        command=self.stop
+    ).pack(side=LEFT)
+
+    # TIMER
+    self.timer_var = tk.StringVar(value="00:00:00")
+
+    ttk.Label(
+        wrapper,
+        textvariable=self.timer_var,
+        font=("Segoe UI", 28, "bold")
+    ).pack(pady=30)
+
+    # TABLE TITLE
+    ttk.Label(
+        wrapper,
+        text="Today's Entries",
+        font=("Segoe UI", 18, "bold")
+    ).pack(pady=15)
+
+    # TABLE
+    self.table = ttk.Treeview(
+        wrapper,
+        columns=("start", "end", "minutes", "activity"),
+        show="headings",
+        height=10
+    )
+
+    for c in ("start", "end", "minutes", "activity"):
+        self.table.heading(c, text=c)
+
+    self.table.pack(fill=BOTH, expand=True, padx=50)
+
+    self.update_timer()
