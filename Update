@@ -1,0 +1,32 @@
+def _build_topbar(self):
+    topbar = ttk.Frame(self.main, padding=(10, 6))
+    topbar.grid(row=0, column=0, sticky="ew", pady=(0, 12))
+
+    # 3-column layout: left spacer | center title | right date
+    topbar.columnconfigure(0, weight=1)
+    topbar.columnconfigure(1, weight=2)
+    topbar.columnconfigure(2, weight=1)
+
+    # LEFT (empty for balance)
+    ttk.Label(topbar, text="").grid(row=0, column=0)
+
+    # CENTER TITLE (modern feel)
+    self.page_title_label = ttk.Label(
+        topbar,
+        text="Dashboard",
+        font=("Segoe UI Variable", 28, "bold"),
+        anchor="center"
+    )
+    self.page_title_label.grid(row=0, column=1)
+
+    # RIGHT DATE (subtle)
+    self.date_label = ttk.Label(
+        topbar,
+        text=datetime.now().strftime("%a %d %b %Y"),
+        font=("Segoe UI", 10),
+        bootstyle="secondary"
+    )
+    self.date_label.grid(row=0, column=2, sticky="e")
+
+self.style.configure("TLabel", padding=2)
+self.tk.call("tk", "scaling", 1.2)
